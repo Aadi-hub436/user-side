@@ -1,0 +1,175 @@
+{
+  "entities": {
+    "TasteProfile": {
+      "title": "TasteProfile",
+      "description": "Signed-in customer's dietary and cuisine preferences used to personalize dish recommendations.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user who owns this preference profile.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dietaryMode": {
+          "type": "string",
+          "description": "Dietary filter preference for personalized recommendations.",
+          "enum": ["all", "veg"]
+        },
+        "favoriteCategories": {
+          "type": "array",
+          "description": "Up to 4 preferred cuisine categories selected by the user."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the taste profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the taste profile was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "dietaryMode",
+        "favoriteCategories",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "OrderRecord": {
+      "title": "OrderRecord",
+      "description": "COD food delivery order belonging strictly to a signed-in customer for syncing order history and personalized recommendations.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the customer who placed the order.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orderId": {
+          "type": "string",
+          "description": "Human-readable order identifier such as #ID-4092.",
+          "minLength": 3,
+          "maxLength": 32
+        },
+        "grandTotal": {
+          "type": "number",
+          "description": "Total Cash on Delivery amount in INR."
+        },
+        "longestPrepMins": {
+          "type": "number",
+          "description": "Longest dish prep time in minutes among items in the order."
+        },
+        "deliveryMins": {
+          "type": "number",
+          "description": "Delivery dispatch minutes added to prep time."
+        },
+        "estimatedTotalMins": {
+          "type": "number",
+          "description": "Total estimated minutes from placement to delivery."
+        },
+        "statusIndex": {
+          "type": "number",
+          "description": "Order fulfillment stage (0=Placed, 1=Preparing, 2=Out for Delivery, 3=Delivered)."
+        },
+        "placedAt": {
+          "type": "string",
+          "description": "Formatted local time string when order was placed.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "placedDate": {
+          "type": "string",
+          "description": "Formatted local date string when order was placed.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Recipient full name (PII isolated to owner).",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Recipient phone number (PII isolated to owner).",
+          "minLength": 7,
+          "maxLength": 24
+        },
+        "customerAddress": {
+          "type": "string",
+          "description": "Recipient delivery address (PII isolated to owner).",
+          "minLength": 4,
+          "maxLength": 500
+        },
+        "itemIds": {
+          "type": "array",
+          "description": "Bounded list of ordered menu item IDs (max 30)."
+        },
+        "itemQuantities": {
+          "type": "array",
+          "description": "Bounded list of ordered quantities matching itemIds (max 30)."
+        },
+        "otpEnabled": {
+          "type": "boolean",
+          "description": "Whether 4-digit OTP verification was enabled when placing the order."
+        },
+        "orderOtp": {
+          "type": "string",
+          "description": "Freshly generated 4-digit numeric OTP for this order when otpEnabled is true.",
+          "minLength": 4,
+          "maxLength": 4,
+          "pattern": "^[0-9]{4}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when order was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when order status was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "orderId",
+        "grandTotal",
+        "longestPrepMins",
+        "deliveryMins",
+        "estimatedTotalMins",
+        "statusIndex",
+        "placedAt",
+        "placedDate",
+        "customerName",
+        "customerPhone",
+        "customerAddress",
+        "itemIds",
+        "itemQuantities",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/profile/{docId}": {
+      "schema": {
+        "$ref": "#/entities/TasteProfile"
+      },
+      "description": "Stores each signed-in user's dietary and cuisine preferences under docId 'preferences'."
+    },
+    "/users/{userId}/orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/OrderRecord"
+      },
+      "description": "Private per-user COD order history and live fulfillment status."
+    }
+  }
+}

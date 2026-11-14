@@ -1,0 +1,135 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidTasteProfile(data, userId) {
+      return data.keys().hasAll(['ownerId', 'dietaryMode', 'favoriteCategories', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'dietaryMode', 'favoriteCategories', 'createdAt', 'updatedAt'])
+        && data.ownerId is string
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.dietaryMode in ['all', 'veg']
+        && data.favoriteCategories is list
+        && data.favoriteCategories.size() <= 4
+        && (data.favoriteCategories.size() == 0 || (
+          data.favoriteCategories[0] is string
+          && data.favoriteCategories[0].size() <= 40
+        ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOrderRecord(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'orderId', 'grandTotal', 'longestPrepMins',
+          'deliveryMins', 'estimatedTotalMins', 'statusIndex',
+          'placedAt', 'placedDate', 'customerName', 'customerPhone',
+          'customerAddress', 'itemIds', 'itemQuantities', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'orderId', 'grandTotal', 'longestPrepMins',
+          'deliveryMins', 'estimatedTotalMins', 'statusIndex',
+          'placedAt', 'placedDate', 'customerName', 'customerPhone',
+          'customerAddress', 'itemIds', 'itemQuantities',
+          'otpEnabled', 'orderOtp', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.orderId is string && data.orderId.size() >= 3 && data.orderId.size() <= 32
+        && data.grandTotal is number && data.grandTotal > 0 && data.grandTotal <= 100000
+        && data.longestPrepMins is number && data.longestPrepMins >= 1 && data.longestPrepMins <= 180
+        && data.deliveryMins is number && data.deliveryMins >= 1 && data.deliveryMins <= 120
+        && data.estimatedTotalMins is number && data.estimatedTotalMins >= 1 && data.estimatedTotalMins <= 300
+        && data.statusIndex is int && data.statusIndex >= 0 && data.statusIndex <= 3
+        && data.placedAt is string && data.placedAt.size() >= 1 && data.placedAt.size() <= 32
+        && data.placedDate is string && data.placedDate.size() >= 1 && data.placedDate.size() <= 32
+        && data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 120
+        && data.customerPhone is string && data.customerPhone.size() >= 7 && data.customerPhone.size() <= 24
+        && data.customerAddress is string && data.customerAddress.size() >= 4 && data.customerAddress.size() <= 500
+        && data.itemIds is list && data.itemIds.size() >= 1 && data.itemIds.size() <= 30
+        && data.itemIds[0] is string && data.itemIds[0].size() >= 1 && data.itemIds[0].size() <= 64
+        && data.itemQuantities is list && data.itemQuantities.size() == data.itemIds.size()
+        && data.itemQuantities[0] is int && data.itemQuantities[0] >= 1 && data.itemQuantities[0] <= 99
+        && (!('otpEnabled' in data) || data.otpEnabled is bool)
+        && (!('orderOtp' in data) || (
+          data.orderOtp is string
+          && data.orderOtp.size() == 4
+          && data.orderOtp.matches('^[0-9]{4}$')
+        ))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId}/profile/{docId} {
+      allow get: if isValidId(userId) && isValidId(docId) && docId == 'preferences' && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isValidId(docId)
+        && docId == 'preferences'
+        && isOwner(userId)
+        && isValidTasteProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isValidId(docId)
+        && docId == 'preferences'
+        && isOwner(userId)
+        && isValidTasteProfile(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['dietaryMode', 'favoriteCategories', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    match /users/{userId}/orders/{orderId} {
+      allow get: if isValidId(userId) && isValidId(orderId) && isOwner(userId);
+      allow list: if isValidId(userId) && isOwner(userId) && resource.data.ownerId == request.auth.uid;
+      allow create: if isValidId(userId)
+        && isValidId(orderId)
+        && isOwner(userId)
+        && isValidOrderRecord(incoming(), userId)
+        && incoming().statusIndex == 0
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isValidId(orderId)
+        && isOwner(userId)
+        && existing().statusIndex < 3
+        && isValidOrderRecord(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().orderId == existing().orderId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().statusIndex >= existing().statusIndex
+        && incoming().diff(existing()).affectedKeys().hasOnly(['statusIndex', 'updatedAt']);
+      allow delete: if false;
+    }
+  }
+}
